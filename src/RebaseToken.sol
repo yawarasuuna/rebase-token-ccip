@@ -1,0 +1,70 @@
+//SPDX-License-Identifier: MIT
+pragma solidity ^0.8.25;
+
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+/**
+ * @title RebaseToken
+ * @author yawarasuuna
+ * @notice This is a cross-chain rebase token that incentivizes users to deposit into a vault and gain interest in rewards
+ * @notice The interest rate in this smart contract can only decrease
+ * @notice Each user will have their own interest rate that is the global interest rate at the time of deposit
+ */
+contract RebaseToken is ERC20 {
+    error RebaseToken__InterestRateCanOnlyDecrease(uint256 oldInterestRate, uint256 newInterestRate);
+
+    uint256 private s_interestRate = 5e10;
+    mapping(address user => uint256 interestRate) private s_userInterestRate;
+    mapping(address user => uint256 timestamp) private s_userLastUpdatedTimestamp;
+
+    event SetInterestRate(uint256 newInterestRate);
+
+    constructor() ERC20("Rtoken", "rRBT") {}
+
+    /**
+     * @notice Set the interest rate in the contract
+     * @param _newInterestRate The new interest rate to set
+     * @dev The interest rate can only decrease
+     */
+    function setInterestRate(uint256 _newInterestRate) external {
+        // set interest rate
+        if (_newInterestRate < s_interestRate) {
+            revert RebaseToken__InterestRateCanOnlyDecrease(s_interestRate, _newInterestRate);
+        }
+        s_interestRate = _newInterestRate;
+        emit SetInterestRate(_newInterestRate);
+    }
+
+    /**
+     * @notice Mint the user tokens when they deposit into the vault
+     * @param _to The user to mint th tokens to
+     * @param _amount The amount of tokens to mint
+     */
+    function mint(address _to, uint256 _amount) external {
+        _mintAccruedInterest(_to);
+        s_userInterestRate[_to] = s_interestRate;
+        _mint(_to, _amount);
+    }
+
+    // super keyword finds function in the contract we are inheriting and call it
+    function balanceOf(address _user) public view override returns (uint256) {
+        return super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceLastUpdate(_user);
+    }
+
+    function _calculateUserAccumulatedInterestSinceLastUpdate(address _user) internal view returns (uint256) {
+        24m10s
+    }
+
+    function _mintAccruedInterest(address _user) internal {
+        s_userLastUpdatedTimestamp[_user] = block.timestamp;
+    }
+
+    /**
+     * @notice Get the interest rate for the user
+     * @param _user The user to get the interest rate for
+     * @return The interest rate for the user
+     */
+    function getUserInterestRate(address _user) external view returns (uint256) {
+        return s_userInterestRate[address(_user)];
+    }
+}
