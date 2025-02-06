@@ -14,6 +14,7 @@ contract RebaseToken is ERC20 {
     error RebaseToken__InterestRateCanOnlyDecrease(uint256 oldInterestRate, uint256 newInterestRate);
 
     uint256 private s_interestRate = 5e10;
+    uint256 private constant PRECISION_FACTOR = 1e18;
     mapping(address user => uint256 interestRate) private s_userInterestRate;
     mapping(address user => uint256 timestamp) private s_userLastUpdatedTimestamp;
 
@@ -46,17 +47,48 @@ contract RebaseToken is ERC20 {
         _mint(_to, _amount);
     }
 
-    // super keyword finds function in the contract we are inheriting and call it
+    /**
+     * @notice Burn the user tokens when they withdraw from the vault
+     * @param _from The user to burn the tokens from
+     * @param _amount The amount of tokens to burn
+     */
+    function burn(address _from, uint256 _amount) external {
+        if (_amount == type(uint256).max) { // avoids dust
+            _amount = balanceOf(_from);
+        }
+        _mintAccruedInterest(_from);
+        _burn(_from, _amount);
+    }
+
+    // super keyword finds function in the contract we are inheriting and call it, only works if it overrides another fx
     function balanceOf(address _user) public view override returns (uint256) {
-        return super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceLastUpdate(_user);
+        return (super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceLastUpdate(_user)) / PRECISION_FACTOR;
     }
 
-    function _calculateUserAccumulatedInterestSinceLastUpdate(address _user) internal view returns (uint256) {
-        24m10s
+    /**
+     * @notice Calculate the interest that has accumulated since the last update
+     * @param _user The user to calculate the interest accumulated for
+     * @return linearInterest The interest that has accumulated since the last update
+     */
+    function _calculateUserAccumulatedInterestSinceLastUpdate(address _user)
+        internal
+        view
+        returns (uint256 linearInterest)
+    {
+        uint256 timeElapsed = block.timestamp - s_userLastUpdatedTimestamp[_user];
+        linearInterest = PRECISION_FACTOR + (s_userInterestRate[_user] * timeElapsed);
     }
 
+    /**
+     * @notice Mint accrued interest to the user since the last time they interacted with the protocol, e.g. burn, mint, transfer
+     * @param _user The user to min the accrued interest to
+     */
     function _mintAccruedInterest(address _user) internal {
+        uint256 previousPrincipalBalance = super.balanceOf(_user);
+        uint256 currentBalance = balanceOf(_user);
+        uint256 accruedInterestSinceLastUpdate = currentBalance - previousPrincipalBalance;
         s_userLastUpdatedTimestamp[_user] = block.timestamp;
+        _mint(_user, accruedInterestSinceLastUpdate);
     }
 
     /**
